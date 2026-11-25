@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Костёр</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const rnd=Math.random;
+let W,H,cols,rows,cw,chh,fs,dpr,R,G,B,CH,stars,snow,sparks=[],smoke=[],gr,fx,fy,moon,FW,FH,heat;
+
+/* ---------- настройка размеров ---------- */
+function setup(){
+  dpr=window.devicePixelRatio||1;W=innerWidth;H=innerHeight;
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  fs=W<700?8:10;ctx.font=fs+'px monospace';ctx.textBaseline='top';
+  cw=ctx.measureText('M').width;chh=fs*1.05;
+  cols=Math.floor(W/cw);rows=Math.floor(H/chh);
+  const n=cols*rows;
+  R=new Uint8Array(n);G=new Uint8Array(n);B=new Uint8Array(n);CH=new Array(n).fill(' ');
+  gr=Math.floor(rows*0.74);fx=cols>>1;fy=gr+Math.floor((rows-gr)*0.55);
+  FH=Math.max(14,Math.min(40,Math.floor(rows*0.26)));
+  FW=Math.min(Math.floor(FH*1.5),cols-4);
+  heat=new Float32Array(FW*FH);
+  moon={x:Math.floor(cols*0.78),y:Math.floor(rows*0.13),r:Math.max(3,Math.floor(rows*0.06))};
+  build();
+  snow=[];sparks=[];smoke=[];
+  for(let i=0;i<n/80;i++)snow.push({x:rnd()*cols,y:rnd()*rows,z:.3+rnd()*.7,p:rnd()*6.28});
+}
+function put(x,y,c,r,g,b){
+  if(x<0||x>=cols||y<0||y>=rows)return;
+  const i=y*cols+x;CH[i]=c;R[i]=r;G[i]=g;B[i]=b;
+}
+
+/* ---------- статичный фон: горы, луна, ёлки, земля ---------- */
+function build(){
+  stars=[];
+  for(let i=0;i<cols*rows*0.045;i++){
+    const x=Math.floor(rnd()*cols),y=Math.floor(rnd()*gr*0.8);
+    if(Math.hypot((x-moon.x)/2,y-moon.y)<moon.r+2)continue;
+    stars.push({x,y,p:rnd()*6.28,c:'.+*\''[Math.floor(rnd()*4)]});
+  }
+  const top=(x,k,o)=>gr-rows*(k+0.13*Math.sin(x*0.045+o)+0.07*Math.sin(x*0.12+o)+0.025*Math.sin(x*0.31));
+  // дальний хребет
+  for(let x=0;x<cols;x++){
+    const t=Math.floor(top(x,0.33,3));if(rnd()<0.15)put(x,t-1,'A',70,75,95);
+    for(let y=t;y<gr;y++){
+      const v=Math.max(40,120-(y-t)*5);
+      put(x,y,y===t?'^':'.:'[Math.floor(rnd()*2)],v,v,v+25);
+    }
+  }
+  // ближний хребет
+  for(let x=0;x<cols;x++){
+    const t=Math.floor(top(x,0.24,1)),s=top(x+1,0.24,1)-top(x-1,0.24,1);
+    for(let y=t;y<gr;y++){
+      const d=y-t,v=Math.max(50,225-d*9);
+      let c;
+      if(d===0)c=s<-0.6?'/':s>0.6?'\\':'A';
+      else if(d<3)c='m^A.'[Math.floor(rnd()*4)];
+      else c='%#H$@m'[Math.floor(rnd()*6)];
+      put(x,y,c,v,v,Math.min(255,v+15));
+    }
+  }
+  // луна
+  for(let dy=-moon.r;dy<=moon.r;dy++)for(let dx=-moon.r*2;dx<=moon.r*2;dx++){
+    const d=Math.hypot(dx/2,dy);
+    if(d<=moon.r){const e=d<moon.r-1;put(moon.x+dx,moon.y+dy,e?'O0o@'[Math.floor(rnd()*4)]:'.',e?250:190,e?250:190,e?235:170);}
+  }
+  // ёлки
+  const tree=(x,h,v)=>{
+    for(let i=0;i<h;i++){
+      const w=1+Math.floor(i*0.85),y=gr-h+i-1;
+      for(let k=-w;k<=w;k++){
+        const edge=Math.abs(k)===w;
+        const c=k===-w?'/':k===w?'\\':(i%3===2&&!edge?'_':'^*.A'[Math.floor(rnd()*4)]);
+        const sn=rnd()<0.25?40:0;
+        put(x+k,y,c,Math.min(255,v+sn),Math.min(255,v+sn),Math.min(255,v+12+sn));
+      }
+    }
+    put(x,gr-1,'|',90,70,50);
+  };
+  for(let i=0;i<Math.floor(cols/4);i++){
+    const x=Math.floor(rnd()*cols);
+    if(Math.abs(x-fx)<Math.min(22,cols*0.22))continue;
+    tree(x,6+Math.floor(rnd()*9),85+Math.floor(rnd()*90));
+  }
+  // земля со снегом
+  for(let y=gr;y<rows;y++){
+    const k=(y-gr)/(rows-gr),v=Math.floor(70+k*150);
+    for(let x=0;x<cols;x++){
+      const r=rnd();
+      put(x,y,r<0.3?'-':r<0.5?'_':r<0.7?'=':r<0.88?'~':'.',v,v,v+10);
+    }
+  }
+}
+
+/* ---------- огонь ---------- */
+const RAMP=[[0.06,50,8,4],[0.22,160,28,8],[0.42,235,80,14],[0.62,255,150,28],[0.80,255,215,80],[1.0,255,250,200]];
+function ramp(h){
+  if(h<=RAMP[0][0])return[RAMP[0][1],RAMP[0][2],RAMP[0][3]];
+  for(let i=1;i<RAMP.length;i++){
+    if(h<=RAMP[i][0]){
+      const a=RAMP[i-1],b=RAMP[i],k=(h-a[0])/(b[0]-a[0]);
+      return[a[1]+(b[1]-a[1])*k,a[2]+(b[2]-a[2])*k,a[3]+(b[3]-a[3])*k];
+    }
+  }
+  return[255,250,200];
+}
+let fireTick=0;const LOW=".,'`",MID=":;+*",HIGH="xX#%&@";
+function pick(s){return s[Math.floor(rnd()*s.length)]}
+function txt(x,y,c,r,g,b,bg){
+  if(x<0||x>=cols||y<0||y>=rows)return;
+  if(bg){ctx.fillStyle=bg;ctx.fillRect(x*cw,y*chh,cw+0.5,chh+0.5);}
+  ctx.fillStyle='rgb('+(r|0)+','+(g|0)+','+(b|0)+')';
+  ctx.fillText(c,x*cw,y*chh);
+}
+
+function stepFire(t,wind){
+  const c=(FW-1)/2;
+  // источник: язык пламени у основания, пульсирует
+  for(let x=0;x<FW;x++){
+    const d=Math.abs(x-c)/(c+1);
+    const m=Math.max(0,1-Math.pow(d,1.5));
+    const pulse=0.8+0.25*Math.sin(t*5+x*0.7)+0.15*Math.sin(t*13+x*1.9);
+    heat[(FH-1)*FW+x]=Math.min(1.15,m*pulse*(0.7+rnd()*0.5));
+  }
+  const lean=wind*2.2+Math.sin(t*1.7)*0.35;
+  for(let y=FH-2;y>=0;y--){
+    for(let x=0;x<FW;x++){
+      const d=Math.abs(x-c)/(c+1);
+      let sx=x+Math.round(lean*(1-y/FH)+(rnd()*3-1));
+      sx=Math.max(1,Math.min(FW-2,sx));
+      const r=(y+1)*FW;
+      let v=(heat[r+sx-1]+heat[r+sx]*2+heat[r+sx+1])/4;
+      v-=(0.6+rnd()*0.55)/FH+d*d*1.15/FH;
+      heat[y*FW+x]=v>0?v:0;
+    }
+  }
+}
+
+function drawFire(t,wind){
+  if(++fireTick%2===0)stepFire(t*0.45,wind*0.5);
+  const ox=fx-(FW>>1),oy=fy-FH;
+  // угольное ложе и свечение под огнём
+  for(let x=-FW/2-2;x<=FW/2+2;x++){
+    const gx=Math.round(fx+x),f=0.5+0.5*Math.sin(t*7+x*1.3);
+    txt(gx,fy+1,pick('@#%0'),160+f*90,40+f*50,8,'rgb(40,8,2)');
+  }
+  for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){
+    const h=heat[y*FW+x];
+    if(h<0.07)continue;
+    const col=ramp(h);
+    const q=x*7+y*13+Math.floor(t*3);const ch=h>0.72?HIGH[q%HIGH.length]:h>0.38?MID[q%MID.length]:LOW[q%LOW.length];
+    const bgk=Math.min(0.35,h*0.4);
+    txt(ox+x,oy+y,ch,col[0],col[1],col[2],'rgb('+(col[0]*bgk|0)+','+(col[1]*bgk*0.5|0)+','+(col[2]*bgk*0.2|0)+')');
+    // искры и дым
+    if(h>0.5&&y<FH*0.6&&rnd()<0.006)sparks.push({x:ox+x,y:oy+y,vx:(rnd()-.5)*0.3,vy:-(0.05+rnd()*0.2),l:1,p:rnd()*6});
+    if(y<2&&h>0.1&&rnd()<0.05)smoke.push({x:ox+x,y:oy+y,l:1,p:rnd()*6});
+  }
+  // брёвна: скрещённые, снизу подсвечены
+  const f=0.6+0.4*Math.sin(t*6);
+  const L=Math.max(6,Math.floor(FW*0.45));
+  for(let i=-L;i<=L;i++){
+    const y1=fy+Math.round(-i*0.18)+0,y2=fy+Math.round(i*0.18)+0;
+    const glow=Math.max(0,1-Math.abs(i)/L)*f;
+    const r=105+glow*110,g=62+glow*45,b=28;
+    const c1=i<-L+1?'O':i>L-1?'O':'=';
+    txt(fx+i,y1+1,c1,r,g,b,'rgb(25,12,5)');
+    txt(fx+i,y2,i%3===0?'#':'=',r*0.85,g*0.85,b,'rgb(25,12,5)');
+  }
+  txt(fx-L-1,fy+1,'(',120,70,30);txt(fx+L+1,fy+1,')',120,70,30);
+  // камни по кругу
+  const sw=L+4;
+  for(let i=-sw;i<=sw;i+=2){
+    const y=fy+2+Math.round(Math.cos(i/sw*1.4)*-1+1);
+    const v=95+(rnd()*25);
+    txt(fx+i,y+1,pick('Oo0'),v+Math.max(0,60-Math.abs(i)*6),v,v-10);
+  }
+}
+
+/* ---------- кадр ---------- */
+let last=0;
+function frame(ts){
+  if(ts-last<33){requestAnimationFrame(frame);return}
+  last=ts;
+  const t=ts/1000,wind=0.12+0.1*Math.sin(t*0.25);
+  // звёзды мерцают в буфере и возвращаются обратно
+  const saved=[];
+  for(const s of stars){
+    const i=s.y*cols+s.x;
+    saved.push([i,CH[i],R[i],G[i],B[i]]);
+    const v=Math.floor(110+130*(0.5+0.5*Math.sin(t*2+s.p)));
+    CH[i]=s.c;R[i]=v;G[i]=v;B[i]=v;
+  }
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  const fl=0.88+0.08*Math.sin(t*3.5)+0.05*Math.sin(t*8)+0.02*rnd(),RAD=cols*0.2;
+  for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+    const i=y*cols+x,c=CH[i];if(c===' ')continue;
+    const d=Math.hypot((x-fx)/2,(y-fy+3)*1.4),k=Math.max(0,1-d/RAD)*fl,gl=k*k;
+    let r=R[i],g=G[i],b=B[i];
+    if(gl>0.01){r=Math.min(255,r*(1-gl*0.4)+235*gl);g=g*(1-gl*0.5)+125*gl;b=b*(1-gl*0.8)+10*gl;}
+    ctx.fillStyle='rgb('+(r|0)+','+(g|0)+','+(b|0)+')';
+    ctx.fillText(c,x*cw,y*chh);
+  }
+  for(let k=saved.length-1;k>=0;k--){const s=saved[k];CH[s[0]]=s[1];R[s[0]]=s[2];G[s[0]]=s[3];B[s[0]]=s[4];}
+  drawFire(t,wind);
+  // дым
+  for(let i=smoke.length-1;i>=0;i--){
+    const s=smoke[i];s.y-=0.05;s.x+=wind*0.6+Math.sin(t*2+s.p)*0.08;s.l-=0.012;
+    if(s.l<=0||s.y<0){smoke.splice(i,1);continue}
+    const v=40+s.l*80|0;
+    ctx.fillStyle='rgb('+v+','+v+','+(v+6)+')';
+    ctx.fillText(s.l>0.6?':':s.l>0.3?'.':'`',Math.floor(s.x)*cw,Math.floor(s.y)*chh);
+  }
+  // снег
+  for(const f of snow){
+    f.y+=0.035+f.z*0.1;f.x+=wind*f.z*0.7+Math.sin(t*0.6+f.p)*0.025;
+    if(f.y>=rows){f.y=-1;f.x=rnd()*cols}
+    if(f.x>=cols)f.x-=cols;if(f.x<0)f.x+=cols;
+    const v=Math.floor(120+135*f.z);
+    ctx.fillStyle='rgb('+v+','+v+','+v+')';
+    ctx.fillText(f.z>0.8?'*':f.z>0.55?'+':'.',Math.floor(f.x)*cw,Math.floor(f.y)*chh);
+  }
+  // искры
+  for(let i=sparks.length-1;i>=0;i--){
+    const s=sparks[i];s.x+=s.vx+wind*0.6+Math.sin(t*6+s.p)*0.06;s.y+=s.vy;s.l-=0.005;
+    if(s.l<=0||s.y<0){sparks.splice(i,1);continue}
+    ctx.fillStyle='rgb(255,'+(70+s.l*150|0)+','+(s.l*50|0)+')';
+    ctx.fillText(s.l>0.6?'*':s.l>0.3?'+':'.',Math.floor(s.x)*cw,Math.floor(s.y)*chh);
+  }
+  requestAnimationFrame(frame);
+}
+addEventListener('resize',setup);
+setup();requestAnimationFrame(frame);
+</script>
+</body>
+</html>
